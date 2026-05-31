@@ -5,6 +5,7 @@ import ssl
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.types import BotCommand
 
 from app.alerts import setup_scheduler
 from app.config import config
@@ -39,6 +40,17 @@ async def main():
     storage.init()
     market = Market()  # дані з CoinGecko у USD (публічні, без ключів)
     services = Services(storage=storage, market=market)
+
+    await bot.set_my_commands([
+        BotCommand(command="invest",  description="Рекомендація — коли і якими ордерами купити"),
+        BotCommand(command="status",  description="Поточні ціни BTC/ETH і стан ринку"),
+        BotCommand(command="orders",  description="Мої активні ордери у журналі"),
+        BotCommand(command="cleanup", description="Застряглі ордери — що варто скасувати"),
+        BotCommand(command="base",    description="Змінити базову суму (зараз /base 150)"),
+        BotCommand(command="alerts",  description="Сповіщення: /alerts on або /alerts off"),
+        BotCommand(command="reset",   description="Очистити всі дані (тільки для тестування)"),
+        BotCommand(command="start",   description="Довідка і мій Telegram ID"),
+    ])
 
     scheduler = setup_scheduler(bot, services)
     scheduler.start()

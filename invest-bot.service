@@ -1,0 +1,17 @@
+[Unit]
+Description=Invest Bot (BTC/ETH DCA advisor)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/invest-bot
+ExecStart=/home/ubuntu/invest-bot/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

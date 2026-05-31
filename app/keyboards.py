@@ -29,4 +29,5 @@ def build_orders_kb(rec_id: int, flat: List[dict], decisions: Dict[int, str]) ->
                 InlineKeyboardButton(text=f"✅ {label}", callback_data=f"o:{rec_id}:{i}:y"),
                 InlineKeyboardButton(text="✖️", callback_data=f"o:{rec_id}:{i}:n"),
             ])
+    rows.append([InlineKeyboardButton(text="📋 Готово — надіслати звіт", callback_data=f"done:{rec_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

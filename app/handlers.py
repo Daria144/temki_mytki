@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.config import config
 from app.engine import analyze, fng_label
@@ -114,6 +114,51 @@ async def cb_order(callback: CallbackQuery, services: Services):
         await callback.answer("Пропущено")
 
 
+@router.callback_query(F.data.startswith("done:"))
+async def cb_done(callback: CallbackQuery, services: Services):
+    if not _allowed(callback.from_user.id):
+        await callback.answer()
+        return
+    try:
+        rec_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer()
+        return
+
+    payload = services.storage.get_recommendation(rec_id)
+    flat = flat_orders(payload) if payload else []
+    decisions = services.storage.get_decisions(rec_id)
+
+    confirmed = [(i, o) for i, o in enumerate(flat) if decisions.get(i) == "open"]
+    skipped   = [(i, o) for i, o in enumerate(flat) if decisions.get(i) == "skipped"]
+    pending   = [(i, o) for i, o in enumerate(flat) if decisions.get(i) not in ("open", "skipped")]
+
+    total = sum(o["notional"] for _, o in confirmed)
+
+    out = ["📋 *Звіт по ордерах*", ""]
+    if confirmed:
+        out.append("*Поставив на Bybit:*")
+        for i, o in confirmed:
+            out.append(f"  ✅ #{i+1} {o['coin']} по ${fmt_price(o['price'])} ({fmt_usd(o['notional'])})")
+        out.append(f"  Разом: {fmt_usd(total)}")
+    if skipped:
+        out.append("")
+        out.append("*Пропущено:*")
+        for i, o in skipped:
+            out.append(f"  ✖️ #{i+1} {o['coin']} по ${fmt_price(o['price'])}")
+    if pending:
+        out.append("")
+        out.append("*Не вирішено:*")
+        for i, o in pending:
+            out.append(f"  ⬜ #{i+1} {o['coin']} по ${fmt_price(o['price'])}")
+
+    if not confirmed and not skipped:
+        out.append("Жодного рішення не прийнято.")
+
+    await callback.message.answer("\n".join(out), parse_mode="Markdown")
+    await callback.answer()
+
+
 @router.message(Command("status"))
 async def cmd_status(message: Message, services: Services):
     if not _allowed(message.from_user.id):
@@ -141,10 +186,13 @@ async def cmd_orders(message: Message, services: Services):
     if not rows:
         await message.answer("Немає активних ордерів у журналі.")
         return
+    now = time.time()
     out = ["Твої активні ордери:", ""]
     for r in rows:
+        days = int((now - r["created_at"]) / 86400)
+        age = f"{days}д" if days > 0 else "сьогодні"
         out.append(
-            f"• {r['coin']} {r['qty']:.6f} по ${fmt_price(r['price'])} ({fmt_usd(r['notional'])})"
+            f"• {r['coin']} по ${fmt_price(r['price'])} ({fmt_usd(r['notional'])}) — {age}"
         )
     await message.answer("\n".join(out))
 
@@ -197,6 +245,30 @@ async def cmd_base(message: Message, command: CommandObject, services: Services)
         return
     services.storage.set_base(value)
     await message.answer(f"Готово. Базова сума тепер {fmt_usd(value)}.")
+
+
+@router.message(Command("reset"))
+async def cmd_reset(message: Message, services: Services):
+    if not _allowed(message.from_user.id):
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Так, очистити", callback_data="reset:confirm"),
+        InlineKeyboardButton(text="✖️ Скасувати",    callback_data="reset:cancel"),
+    ]])
+    await message.answer("🗑 Очистити всі ордери, рекомендації та налаштування?", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("reset:"))
+async def cb_reset(callback: CallbackQuery, services: Services):
+    if not _allowed(callback.from_user.id):
+        await callback.answer()
+        return
+    if callback.data == "reset:confirm":
+        services.storage.reset()
+        await callback.message.edit_text("🗑 База очищена.")
+    else:
+        await callback.message.edit_text("Скасовано.")
+    await callback.answer()
 
 
 @router.message(Command("alerts"))

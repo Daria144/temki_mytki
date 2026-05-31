@@ -65,6 +65,14 @@ class Storage:
                 """
             )
 
+    def reset(self):
+        """Очищає всі дані (тільки для тестування)."""
+        with self._conn() as c:
+            c.executescript(
+                "DELETE FROM orders; DELETE FROM recommendations; "
+                "DELETE FROM alert_state; DELETE FROM settings;"
+            )
+
     # --- settings ---
     def get_setting(self, key: str, default=None):
         with self._conn() as c:
