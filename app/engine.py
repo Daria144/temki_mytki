@@ -88,18 +88,23 @@ def _coin_score(d: Dict, fng: int):
     closes = d["closes"]
     price = d["price"]
     sma200 = ind.sma(closes, 200)
-    sma200w = ind.sma(d.get("weekly_closes", []), 200)
     rsi_val = ind.rsi(closes, 14)
 
     mayer = price / sma200 if sma200 else None
     mayer_score = _lin(mayer, 0.8, 2.4)
-    weekly_score = _lin(price / sma200w, 1.0, 4.0) if sma200w else None
     rsi_score = _lin(rsi_val, 30, 70)
     fng_score = 100.0 - fng
 
+    # Положення ціни в річному діапазоні: 0 = річне дно (добре), 1 = річний пік (дорого)
+    annual_score: Optional[float] = None
+    if closes:
+        lo, hi = min(closes), max(closes)
+        if hi > lo:
+            annual_score = (1.0 - (price - lo) / (hi - lo)) * 100.0
+
     score = _weighted([
         (mayer_score, 0.35),
-        (weekly_score, 0.20),
+        (annual_score, 0.20),
         (rsi_score, 0.20),
         (fng_score, 0.25),
     ])
@@ -110,7 +115,7 @@ def _ladder(coin: str, price: float, amount: float, atr_pct: Optional[float],
             moment: str, rungs: int) -> List[Order]:
     if amount < config.min_notional:
         return []
-    u = max(0.015, min(0.035, atr_pct if atr_pct else 0.03))
+    u = max(0.015, min(0.04, atr_pct if atr_pct else 0.03))
     if moment == "pricey":
         drops = [0.4 * u]
     else:

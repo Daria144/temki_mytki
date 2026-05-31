@@ -41,8 +41,8 @@ async def _send_rec(bot, services, prefix: str, rec):
 
 def _min_low_since(d: dict, created_at: int) -> Optional[float]:
     cutoff_ms = created_at * 1000
-    lows = [low for t, low in zip(d.get("ts", []), d.get("lows", [])) if t >= cutoff_ms]
-    return min(lows) if lows else None
+    closes = [c for t, c in zip(d.get("ts", []), d.get("closes", [])) if t >= cutoff_ms]
+    return min(closes) if closes else None
 
 
 async def market_check(bot, services):
@@ -143,6 +143,26 @@ async def daily_check(bot, services):
         out.append(f"Заблоковано ~{fmt_usd(frozen)}. Постав нові через /invest.")
         await _send(bot, "\n".join(out))
         services.storage.mark_alert("stale")
+
+    # Тайм-аут спрацювання — добрати по ринку
+    stale_ids = {o["id"] for o in stale}
+    hanging = [
+        o for o in services.storage.open_orders()
+        if o["id"] not in stale_ids and now - o["created_at"] > config.stale_days * DAY
+    ]
+    if hanging and services.storage.alerts_enabled() and not services.storage.alert_recent("market_fill", 7 * DAY):
+        total_notional = sum(o["notional"] for o in hanging)
+        out = [
+            f"⏳ Твої ордери висять {config.stale_days}+ днів і ще не спрацювали.",
+            "Щоб не переривати накопичення — розглянь докупку частини по ринку:",
+            "",
+        ]
+        for o in hanging:
+            out.append(f"• {o['coin']} по ${fmt_price(o['price'])} ({fmt_usd(o['notional'])})")
+        out.append("")
+        out.append(f"Загалом ~{fmt_usd(total_notional)}. Або зачекай далі — вирішуєш ти.")
+        await _send(bot, "\n".join(out))
+        services.storage.mark_alert("market_fill")
 
     # Місячне нагадування DCA
     today = datetime.date.today()
